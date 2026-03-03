@@ -122,6 +122,37 @@ I designed this as a microservices system where each service has a single respon
 
 ---
 
+## Rate Limiting & Throttling
+
+The API Gateway implements **multi-tier rate limiting** using NestJS Throttler to protect against abuse:
+
+### Global Rate Limit
+```typescript
+ThrottlerModule.forRoot([{
+    ttl: 60000,    // 60 seconds
+    limit: 60,     // 60 requests per minute per IP
+}])
+```
+All API endpoints are protected by a global limit of **60 requests per minute** per client.
+
+### Endpoint-Specific Limits
+```typescript
+@Post('run')
+@Throttle({ default: { limit: 10, ttl: 86400000 } }) // 10/day
+async runTest(@Body() dto: CreateSubmissionDto) { ... }
+```
+The code execution endpoint (`POST /submissions/run`) has a stricter limit of **10 requests per 24 hours** per user to prevent resource exhaustion from test runs.
+
+### Why Two Tiers?
+| Limit | Purpose |
+|-------|---------|
+| **Global (60/min)** | Prevents rapid-fire API abuse and scraping |
+| **Execution (10/day)** | Protects expensive Docker container resources |
+
+When limits are exceeded, the API returns `429 Too Many Requests` with retry headers.
+
+---
+
 ## Redis: The Hidden Powerhouse
 
 Redis serves **4 distinct purposes** in this architecture, showcasing its versatility:
@@ -336,13 +367,14 @@ Navigate to `http://localhost:3001`
 - **Problem filtering**: By difficulty (Easy/Medium/Hard) and category
 - **Progress tracking**: Solved problems persist across sessions
 
-### For Engineers (Recruiter-Relevant)
+### Technical Highlights
 - **Microservices**: 5 independently deployable services
 - **gRPC**: Binary protocol with streaming for efficient inter-service calls
 - **Event-driven**: BullMQ decouples submission from execution
 - **Polyglot persistence**: Right database for each use case
 - **Horizontal scaling**: Redis enables multi-instance WebSocket servers
 - **Security**: Sandboxed execution with resource limits
+- **Rate limiting**: Multi-tier throttling (global + endpoint-specific)
 - **Type safety**: End-to-end TypeScript with shared Protobuf contracts
 
 ---
@@ -378,12 +410,7 @@ Navigate to `http://localhost:3001`
 
 - [ ] Kubernetes deployment with Helm charts
 - [ ] Distributed tracing with Jaeger/OpenTelemetry
-- [ ] Rate limiting per user with Redis sliding window
+- [x] Rate limiting with NestJS Throttler (global + per-endpoint)
+- [ ] Advanced rate limiting with Redis sliding window per user
 - [ ] Problem submission history with diff viewer
 - [ ] Collaborative coding with operational transforms
-
----
-
-## License
-
-MIT — Built by **Sahil** as a portfolio project demonstrating production-grade engineering practices.
