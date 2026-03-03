@@ -1,0 +1,210 @@
+syntax = "proto3";
+
+package coderly;
+
+// ============================================
+// Auth Service
+// ============================================
+
+service AuthService {
+  rpc Register (RegisterRequest) returns (RegisterResponse);
+  rpc Login (LoginRequest) returns (LoginResponse);
+  rpc ValidateToken (ValidateTokenRequest) returns (ValidateTokenResponse);
+}
+
+message RegisterRequest {
+  string username = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message RegisterResponse {
+  bool success = 1;
+  string message = 2;
+  string user_id = 3;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  bool success = 1;
+  string message = 2;
+  string access_token = 3;
+  string user_id = 4;
+  string username = 5;
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string username = 3;
+}
+
+// ============================================
+// Problem Service
+// ============================================
+
+service ProblemService {
+  rpc GetProblemById (ProblemByIdRequest) returns (ProblemResponse);
+  rpc GetProblemBySlug (ProblemBySlugRequest) returns (ProblemResponse);
+  rpc GetProblems (ProblemListRequest) returns (ProblemListResponse);
+  rpc CreateProblem (CreateProblemRequest) returns (ProblemResponse);
+  rpc UpdateProblem (UpdateProblemRequest) returns (ProblemResponse);
+  rpc DeleteProblem (DeleteProblemRequest) returns (DeleteProblemResponse);
+}
+
+message ProblemByIdRequest {
+  string id = 1;
+}
+
+message ProblemBySlugRequest {
+  string slug = 1;
+}
+
+message ProblemListRequest {
+  string category = 1;
+  string difficulty = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+
+message TestCase {
+  string input = 1;
+  string expected = 2;
+}
+
+message TemplateEntry {
+  string language = 1;
+  string code = 2;
+}
+
+message ProblemResponse {
+  string id = 1;
+  string title = 2;
+  string slug = 3;
+  string difficulty = 4;
+  string category = 5;
+  string description = 6;
+  repeated TemplateEntry templates = 7;
+  repeated TestCase test_cases = 8;
+  repeated string constraints = 9;
+}
+
+message ProblemListResponse {
+  repeated ProblemResponse problems = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+
+message CreateProblemRequest {
+  string title = 1;
+  string slug = 2;
+  string difficulty = 3;
+  string category = 4;
+  string description = 5;
+  repeated TemplateEntry templates = 6;
+  repeated TestCase test_cases = 7;
+  repeated string constraints = 8;
+}
+
+message UpdateProblemRequest {
+  string id = 1;
+  string title = 2;
+  string slug = 3;
+  string difficulty = 4;
+  string category = 5;
+  string description = 6;
+  repeated TemplateEntry templates = 7;
+  repeated TestCase test_cases = 8;
+  repeated string constraints = 9;
+}
+
+message DeleteProblemRequest {
+  string id = 1;
+}
+
+message DeleteProblemResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ============================================
+// Submission Service
+// ============================================
+
+service SubmissionService {
+  rpc CreateSubmission (CreateSubmissionRequest) returns (SubmissionResponse);
+  rpc GetSubmission (GetSubmissionRequest) returns (SubmissionResponse);
+  rpc GetUserSubmissions (GetUserSubmissionsRequest) returns (SubmissionListResponse);
+  rpc UpdateSubmissionStatus (UpdateSubmissionStatusRequest) returns (SubmissionResponse);
+}
+
+message CreateSubmissionRequest {
+  string user_id = 1;
+  string problem_id = 2;
+  string language = 3;
+  string code_body = 4;
+  bool is_test_run = 5;
+}
+
+message GetSubmissionRequest {
+  string id = 1;
+}
+
+message GetUserSubmissionsRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 limit = 3;
+}
+
+message SubmissionResponse {
+  string id = 1;
+  string user_id = 2;
+  string problem_id = 3;
+  string language = 4;
+  string code_body = 5;
+  string status = 6;
+  int32 execution_time = 7;
+  int32 memory_used = 8;
+  string created_at = 9;
+}
+
+message SubmissionListResponse {
+  repeated SubmissionResponse submissions = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+
+message UpdateSubmissionStatusRequest {
+  string id = 1;
+  string status = 2;
+  int32 execution_time = 3;
+  int32 memory_used = 4;
+}
+
+// ============================================
+// Execution Service
+// ============================================
+
+service ExecutionService {
+  // Server-side streaming for real-time logs
+  rpc StreamExecutionLogs (ExecutionJobId) returns (stream LogFrame);
+}
+
+message ExecutionJobId {
+  string job_id = 1;
+}
+
+message LogFrame {
+  string type = 1;    // "stdout", "stderr", "status", "result"
+  string payload = 2; // the actual log data
+}

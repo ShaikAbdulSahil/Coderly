@@ -1,0 +1,172 @@
+Coderly: Data Flow & Schema Architecture
+
+Author: Sahil
+
+Design Pattern: Microservices with gRPC & WebSockets
+
+1. User Journey & Interaction Flow
+
+A. Authentication Flow
+
+User Action: Logs in via the Frontend.
+
+Gateway: Forwards credentials to Auth Service via gRPC.
+
+Auth Service: Verifies against PostgreSQL.
+
+Gateway: Receives success, creates a session in Redis, and returns a JWT to the user.
+
+B. Problem Discovery Flow
+
+User Action: Browses the "Two-Pointer" category.
+
+Gateway: Calls ProblemService.GetProblems(filter: 'two-pointer') via gRPC.
+
+Problem Service: Queries MongoDB and returns a list of challenges.
+
+C. The "Run Code" Flow (The Heart of Coderly)
+
+User Action: Hits "Run" on a Sliding Window problem.
+
+WebSocket Upgrade: The browser establishes/uses a persistent connection with the API Gateway.
+
+Submission Service: * Gateway calls SubmissionService.CreateSubmission() (gRPC).
+
+Submission Svc saves initial record to PostgreSQL.
+
+Submission Svc pushes job to BullMQ (Redis).
+
+Execution Engine: * Pulls job from BullMQ.
+
+Spawns Docker container.
+
+Captures stdout.
+
+gRPC Stream: Execution Engine streams logs back to the API Gateway in real-time.
+
+Gateway: Forwards those logs immediately over the WebSocket to Sahil's browser.
+
+2. Database Schemas
+
+A. Auth Service (PostgreSQL)
+
+Focus: Relational integrity and security.
+
+Table users {
+  id uuid [pk]
+  username varchar [unique]
+  email varchar [unique]
+  password_hash text
+  created_at timestamp
+}
+
+Table user_sessions {
+  id uuid [pk]
+  user_id uuid [ref: > users.id]
+  token_version int
+  last_login timestamp
+}
+
+
+B. Problem Service (MongoDB)
+
+Focus: Document flexibility for complex test cases.
+
+{
+  "_id": "ObjectId",
+  "title": "Longest Substring Without Repeating Characters",
+  "slug": "longest-substring",
+  "difficulty": "Medium",
+  "category": "Sliding Window",
+  "description": "Markdown string here...",
+  "templates": {
+    "python": "def lengthOfLongestSubstring(s: str) -> int:\n    pass",
+    "javascript": "var lengthOfLongestSubstring = function(s) { };"
+  },
+  "test_cases": [
+    { "input": "abcabcbb", "expected": "3" },
+    { "input": "bbbbb", "expected": "1" }
+  ],
+  "constraints": ["s.length <= 50000"]
+}
+
+
+C. Submission Service (PostgreSQL)
+
+Focus: Audit trail and performance tracking.
+
+Table submissions {
+  id uuid [pk]
+  user_id uuid
+  problem_id string // Matches Mongo ID
+  language varchar
+  code_body text
+  status enum('pending', 'running', 'accepted', 'wrong_answer', 'error')
+  execution_time int // ms
+  memory_used int // kb
+  created_at timestamp
+}
+
+
+3. gRPC Protobuf Definitions (Internal Communication)
+
+syntax = "proto3";
+
+package coderly;
+
+service ProblemService {
+  rpc GetProblemById (ProblemRequest) returns (ProblemResponse);
+}
+
+service SubmissionService {
+  rpc CreateSubmission (SubmissionRequest) returns (SubmissionResponse);
+}
+
+service ExecutionService {
+  // Server-side streaming for real-time logs
+  rpc StreamExecutionLogs (JobId) returns (stream LogFrame);
+}
+
+message LogFrame {
+  string type = 1; // "stdout", "stderr", "CDRLY_STEP"
+  string payload = 2; // The actual log data or pointer positions
+}
+
+
+4. Protocol Summary
+
+Interaction
+
+Protocol
+
+Why?
+
+Client <-> Gateway
+
+HTTP/JSON
+
+Standard web compatibility.
+
+Client <-> Gateway (Logs)
+
+WebSockets
+
+Real-time, low-latency UI updates.
+
+Service <-> Service
+
+gRPC (HTTP/2)
+
+Low overhead, strict typing, high speed.
+
+Submission <-> Engine
+
+BullMQ (Redis)
+
+Reliable task queueing with retries.
+
+Engine -> Gateway
+
+gRPC Streaming
+
+Efficient way to push logs back to the user.

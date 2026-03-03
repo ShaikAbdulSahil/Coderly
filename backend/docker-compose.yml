@@ -1,0 +1,144 @@
+# =====================================================================
+#  Coderly Backend — Docker Compose
+#  Orchestrates all microservices + infrastructure (Redis, Postgres, Mongo)
+# =====================================================================
+
+services:
+
+  # ─── Infrastructure ────────────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    container_name: coderly-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: coderly-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: coderly
+      POSTGRES_PASSWORD: coderly_secret
+      POSTGRES_DB: coderly_auth
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/init-databases.sh:/docker-entrypoint-initdb.d/000-init-databases.sh
+      - ./migrations/001_auth_schema.sql:/docker-entrypoint-initdb.d/001_auth_schema.sql
+      - ./migrations/002_submission_schema.sql:/docker-entrypoint-initdb.d/002_submission_schema.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U coderly -d coderly_auth" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  mongo:
+    image: mongo:7
+    container_name: coderly-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ─── Microservices ─────────────────────────────────────────────────
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: apps/auth-service/Dockerfile
+    container_name: coderly-auth
+    restart: unless-stopped
+    env_file: .env.docker
+    ports:
+      - "50051:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  problem-service:
+    build:
+      context: .
+      dockerfile: apps/problem-service/Dockerfile
+    container_name: coderly-problem
+    restart: unless-stopped
+    env_file: .env.docker
+    ports:
+      - "50052:50052"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  submission-service:
+    build:
+      context: .
+      dockerfile: apps/submission-service/Dockerfile
+    container_name: coderly-submission
+    restart: unless-stopped
+    env_file: .env.docker
+    ports:
+      - "50053:50053"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  execution-engine:
+    build:
+      context: .
+      dockerfile: apps/execution-engine/Dockerfile
+    container_name: coderly-execution
+    restart: unless-stopped
+    env_file: .env.docker
+    ports:
+      - "50054:50054"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: apps/api-gateway/Dockerfile
+    container_name: coderly-gateway
+    restart: unless-stopped
+    env_file: .env.docker
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      problem-service:
+        condition: service_started
+      submission-service:
+        condition: service_started
+      execution-engine:
+        condition: service_started
+
+# ─── Volumes ───────────────────────────────────────────────────────
+
+volumes:
+  redis-data:
+  postgres-data:
+  mongo-data:
